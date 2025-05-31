@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form
 import os
-import fitz  # PyMuPDF
+import fitz 
 
 
 router = APIRouter()

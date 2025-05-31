@@ -6,22 +6,20 @@ import requests
 from tools.websearch import perform_web_search
 from tools.chartgen import auto_generate_chart, draw_chart_from_data
 from tools.extract_chart_data import extract_visual_data_from_text
+from tools.memory import add_note, view_notes, clear_notes, add_citation, view_citations, clear_citations
 
 # Load environment variables
 load_dotenv()
 
-# Import uploaded document contents
 from api.upload import session_documents
 
 router = APIRouter()
-
-# In-memory chat history per session
 conversation_histories = {}
 
 class ChatRequest(BaseModel):
     message: str
     session_id: str
-    format: str = None  # Optional: 'bullet', 'paragraph', or visualization type
+    format: str = None
 
 @router.post("/chat")
 def chat(request: ChatRequest):
@@ -29,29 +27,50 @@ def chat(request: ChatRequest):
         session_id = request.session_id
         message = request.message
         response_format = request.format
+        lowered = message.lower()
 
-        # 🔍 Chart generation logic (data-aware visualization)
-        visual_keywords = ["visualize", "chart", "graph", "plot", "compare", "show as", "bar chart", "line chart", "pie chart"]
+        # 📝 Handle note-taking commands
+        if "take note" in lowered or "remember this" in lowered:
+            note_text = message.split("note", 1)[-1].strip()
+            add_note(session_id, note_text)
+            return {"reply": "✅ Noted."}
+        if "show notes" in lowered or "my notes" in lowered:
+            notes = view_notes(session_id)
+            return {"reply": notes if notes else "You have no saved notes."}
+        if "delete notes" in lowered or "clear notes" in lowered:
+            clear_notes(session_id)
+            return {"reply": "🗑️ All notes deleted."}
+
+        # 📚 Handle citation commands
+        if "cite this" in lowered or "add citation" in lowered:
+            if session_id in conversation_histories:
+                last_reply = next((m["content"] for m in reversed(conversation_histories[session_id]) if m["role"] == "assistant"), None)
+                if last_reply:
+                    add_citation(session_id, last_reply)
+                    return {"reply": "✅ Citation added from the last assistant reply."}
+            return {"reply": "⚠️ No recent assistant reply to cite."}
+        if "show citations" in lowered or "view citations" in lowered:
+            citations = view_citations(session_id)
+            return {"reply": citations if citations else "You have no saved citations."}
+        if "delete citations" in lowered or "clear citations" in lowered:
+            clear_citations(session_id)
+            return {"reply": "🗑️ All citations deleted."}
+
+        # 📊 Chart generation
         if response_format and response_format.lower() in ["bar", "line", "pie", "hist", "histogram"]:
             text_sources = []
-
             if session_id in session_documents:
                 text_sources.append(session_documents[session_id])
-
             if session_id in conversation_histories:
                 text_sources.append(" ".join(
                     msg["content"] for msg in conversation_histories[session_id] if msg["role"] == "user"
                 ))
-
-            # Add web search context
             web_results = perform_web_search(message)
             if web_results:
                 text_sources.append(web_results)
-
             text_sources.append(message)
             combined_text = "\n".join(text_sources)
 
-            # Ask the LLM to extract chart-worthy data
             extracted = extract_visual_data_from_text(combined_text)
             if extracted:
                 chart_type = extracted["type"]
@@ -62,7 +81,7 @@ def chat(request: ChatRequest):
             else:
                 return {"error": "Could not extract meaningful chart data from your request."}
 
-        # Initialize session if needed
+        # 🛠️ Set up session and assistant behavior
         if session_id not in conversation_histories:
             conversation_histories[session_id] = []
             conversation_histories[session_id].append({
@@ -70,15 +89,15 @@ def chat(request: ChatRequest):
                 "content": "You are a helpful research assistant."
             })
 
-        # Chain of Thought trigger
+        # 💭 Enable step-by-step reasoning if prompted
         cot_triggers = ["step by step", "think step by step", "explain step by step", "reason through"]
-        if any(trigger in message.lower() for trigger in cot_triggers):
+        if any(trigger in lowered for trigger in cot_triggers):
             conversation_histories[session_id].insert(1, {
                 "role": "system",
                 "content": "Use Chain of Thought reasoning. Think step by step before answering. Explain each step of your reasoning clearly."
             })
 
-        # Formatting instructions
+        # 🖋️ Format instruction
         if response_format:
             if response_format.lower() == "bullet":
                 conversation_histories[session_id].insert(1, {
@@ -91,7 +110,7 @@ def chat(request: ChatRequest):
                     "content": "Format the answer as a single concise paragraph."
                 })
 
-        # Include document content
+        # 📄 Use uploaded document if available
         if session_id in session_documents:
             document_context = session_documents[session_id][:1500]
             conversation_histories[session_id].append({
@@ -100,7 +119,7 @@ def chat(request: ChatRequest):
             })
             del session_documents[session_id]
 
-        # Web search
+        # 🌐 Web search injection
         web_results = perform_web_search(message)
         if web_results:
             conversation_histories[session_id].append({
@@ -108,13 +127,13 @@ def chat(request: ChatRequest):
                 "content": f"Relevant web search results:\n{web_results}"
             })
 
-        # Add user message
+        # 🙋 Add user message
         conversation_histories[session_id].append({
             "role": "user",
             "content": message
         })
 
-        # Send to Groq
+        # 🤖 Call LLM for initial response
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
@@ -129,13 +148,27 @@ def chat(request: ChatRequest):
         result = response.json()
         reply = result["choices"][0]["message"]["content"]
 
-        # Save assistant reply
+        # 🔁 Self-correction step (LLM reflects on its answer)
+        reflection_prompt = [
+            {"role": "system", "content": "Reflect on the assistant's reply. Check if it's missing information, inaccurate, or unclear. If yes, revise and return a better version. Otherwise, return the same reply."},
+            {"role": "user", "content": f"The assistant said:\n\n{reply}"}
+        ]
+        reflection_data = {
+            "model": "llama3-70b-8192",
+            "messages": reflection_prompt
+        }
+        reflection_response = requests.post(url, headers=headers, json=reflection_data)
+        reflection_result = reflection_response.json()
+        corrected_reply = reflection_result["choices"][0]["message"]["content"]
+        final_reply = corrected_reply if corrected_reply.strip() != reply.strip() else reply
+
+        # 💬 Save and return final reply
         conversation_histories[session_id].append({
             "role": "assistant",
-            "content": reply
+            "content": final_reply
         })
 
-        return {"reply": reply}
+        return {"reply": final_reply}
 
     except Exception as e:
         return {"error": str(e)}
