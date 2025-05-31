@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdf
+*.txt
+venv/
+exports/
+uploaded_files/
+.env

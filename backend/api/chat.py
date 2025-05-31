@@ -4,11 +4,8 @@ from dotenv import load_dotenv
 import os
 import requests
 from tools.websearch import perform_web_search
-from tools.chartgen import auto_generate_chart , draw_chart_from_data
+from tools.chartgen import auto_generate_chart, draw_chart_from_data
 from tools.extract_chart_data import extract_visual_data_from_text
-
-
-
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +21,7 @@ conversation_histories = {}
 class ChatRequest(BaseModel):
     message: str
     session_id: str
-    format: str = None  # Optional: 'bullet' or 'paragraph'
+    format: str = None  # Optional: 'bullet', 'paragraph', or visualization type
 
 @router.post("/chat")
 def chat(request: ChatRequest):
@@ -33,14 +30,37 @@ def chat(request: ChatRequest):
         message = request.message
         response_format = request.format
 
-        # Handle chart formats directly
-        if response_format and response_format.lower() in ["bar", "line", "hist", "scatter"]:
-            try:
-                image_data_url = auto_generate_chart(response_format.lower())
-                return {"chart": image_data_url}
-            except Exception as e:
-                return {"error": f"Failed to generate chart: {str(e)}"}
+        # 🔍 Chart generation logic (data-aware visualization)
+        visual_keywords = ["visualize", "chart", "graph", "plot", "compare", "show as", "bar chart", "line chart", "pie chart"]
+        if response_format and response_format.lower() in ["bar", "line", "pie", "hist", "histogram"]:
+            text_sources = []
 
+            if session_id in session_documents:
+                text_sources.append(session_documents[session_id])
+
+            if session_id in conversation_histories:
+                text_sources.append(" ".join(
+                    msg["content"] for msg in conversation_histories[session_id] if msg["role"] == "user"
+                ))
+
+            # Add web search context
+            web_results = perform_web_search(message)
+            if web_results:
+                text_sources.append(web_results)
+
+            text_sources.append(message)
+            combined_text = "\n".join(text_sources)
+
+            # Ask the LLM to extract chart-worthy data
+            extracted = extract_visual_data_from_text(combined_text)
+            if extracted:
+                chart_type = extracted["type"]
+                labels = extracted["labels"]
+                values = extracted["values"]
+                chart_url = draw_chart_from_data(chart_type, labels, values)
+                return {"chart": chart_url}
+            else:
+                return {"error": "Could not extract meaningful chart data from your request."}
 
         # Initialize session if needed
         if session_id not in conversation_histories:
