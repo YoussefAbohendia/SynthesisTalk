@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 def chat(request: ChatRequest):
+    print(request)
     try:
         session_id = request.session_id
         message = request.message
