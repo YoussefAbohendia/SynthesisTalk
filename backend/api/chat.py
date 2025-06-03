@@ -34,13 +34,14 @@ def chat(request: ChatRequest):
         if "take note" in lowered or "remember this" in lowered:
             note_text = message.split("note", 1)[-1].strip()
             add_note(session_id, note_text)
-            return {"reply": "✅ Noted."}
+            return {"response": "✅ Noted."}
+
         if "show notes" in lowered or "my notes" in lowered:
             notes = view_notes(session_id)
-            return {"reply": notes if notes else "You have no saved notes."}
+            return {"response": notes if notes else "You have no saved notes."}
         if "delete notes" in lowered or "clear notes" in lowered:
             clear_notes(session_id)
-            return {"reply": "🗑️ All notes deleted."}
+            return {"response": "🗑️ All notes deleted."}
 
         # 📚 Handle citation commands
         if "cite this" in lowered or "add citation" in lowered:
@@ -48,14 +49,14 @@ def chat(request: ChatRequest):
                 last_reply = next((m["content"] for m in reversed(conversation_histories[session_id]) if m["role"] == "assistant"), None)
                 if last_reply:
                     add_citation(session_id, last_reply)
-                    return {"reply": "✅ Citation added from the last assistant reply."}
-            return {"reply": "⚠️ No recent assistant reply to cite."}
+                    return {"response": "✅ Citation added from the last assistant reply."}
+            return {"response": "⚠️ No recent assistant reply to cite."}
         if "show citations" in lowered or "view citations" in lowered:
             citations = view_citations(session_id)
-            return {"reply": citations if citations else "You have no saved citations."}
+            return {"response": citations if citations else "You have no saved citations."}
         if "delete citations" in lowered or "clear citations" in lowered:
             clear_citations(session_id)
-            return {"reply": "🗑️ All citations deleted."}
+            return {"response": "🗑️ All citations deleted."}
 
         # 📊 Chart generation
         if response_format and response_format.lower() in ["bar", "line", "pie", "hist", "histogram"]:
@@ -169,7 +170,7 @@ def chat(request: ChatRequest):
             "content": final_reply
         })
 
-        return {"reply": final_reply}
+        return {"response": final_reply}
 
     except Exception as e:
         return {"error": str(e)}
