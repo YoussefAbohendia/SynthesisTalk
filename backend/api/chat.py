@@ -23,7 +23,6 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 def chat(request: ChatRequest):
-    print(request)
     try:
         session_id = request.session_id
         message = request.message
@@ -34,14 +33,13 @@ def chat(request: ChatRequest):
         if "take note" in lowered or "remember this" in lowered:
             note_text = message.split("note", 1)[-1].strip()
             add_note(session_id, note_text)
-            return {"response": "✅ Noted."}
-
+            return {"reply": "✅ Noted."}
         if "show notes" in lowered or "my notes" in lowered:
             notes = view_notes(session_id)
-            return {"response": notes if notes else "You have no saved notes."}
+            return {"reply": notes if notes else "You have no saved notes."}
         if "delete notes" in lowered or "clear notes" in lowered:
             clear_notes(session_id)
-            return {"response": "🗑️ All notes deleted."}
+            return {"reply": "🗑️ All notes deleted."}
 
         # 📚 Handle citation commands
         if "cite this" in lowered or "add citation" in lowered:
@@ -49,14 +47,14 @@ def chat(request: ChatRequest):
                 last_reply = next((m["content"] for m in reversed(conversation_histories[session_id]) if m["role"] == "assistant"), None)
                 if last_reply:
                     add_citation(session_id, last_reply)
-                    return {"response": "✅ Citation added from the last assistant reply."}
-            return {"response": "⚠️ No recent assistant reply to cite."}
+                    return {"reply": "✅ Citation added from the last assistant reply."}
+            return {"reply": "⚠️ No recent assistant reply to cite."}
         if "show citations" in lowered or "view citations" in lowered:
             citations = view_citations(session_id)
-            return {"response": citations if citations else "You have no saved citations."}
+            return {"reply": citations if citations else "You have no saved citations."}
         if "delete citations" in lowered or "clear citations" in lowered:
             clear_citations(session_id)
-            return {"response": "🗑️ All citations deleted."}
+            return {"reply": "🗑️ All citations deleted."}
 
         # 📊 Chart generation
         if response_format and response_format.lower() in ["bar", "line", "pie", "hist", "histogram"]:
@@ -83,12 +81,33 @@ def chat(request: ChatRequest):
             else:
                 return {"error": "Could not extract meaningful chart data from your request."}
 
+        # 📤 Export command detection
+        if "export" in lowered and ("txt" in lowered or "text" in lowered):
+            export_format = "txt"
+        elif "export" in lowered and "pdf" in lowered:
+            export_format = "pdf"
+        else:
+            export_format = None
+
+        if export_format:
+            export_response = requests.post(
+                "http://localhost:8000/export",
+                json={"session_id": session_id, "format": export_format}
+            )
+            if export_response.status_code == 200:
+                # You may need to adapt this link based on deployment location
+                filename = export_response.headers.get("content-disposition", "").split("filename=")[-1]
+                file_url = f"/exports/{filename}"
+                return {"reply": f"✅ Your chat has been exported. [Click to download]({file_url})"}
+            else:
+                return {"reply": "❌ Export failed. Please try again."}
+
         # 🛠️ Set up session and assistant behavior
         if session_id not in conversation_histories:
             conversation_histories[session_id] = []
             conversation_histories[session_id].append({
                 "role": "system",
-                "content": "You are a helpful research assistant."
+                "content": "You are a helpful research assistant. Respond directly to user questions without extra commentary or feedback."
             })
 
         # 💭 Enable step-by-step reasoning if prompted
@@ -150,27 +169,13 @@ def chat(request: ChatRequest):
         result = response.json()
         reply = result["choices"][0]["message"]["content"]
 
-        # 🔁 Self-correction step (LLM reflects on its answer)
-        reflection_prompt = [
-            {"role": "system", "content": "Reflect on the assistant's reply. Check if it's missing information, inaccurate, or unclear. If yes, revise and return a better version. Otherwise, return the same reply."},
-            {"role": "user", "content": f"The assistant said:\n\n{reply}"}
-        ]
-        reflection_data = {
-            "model": "llama3-70b-8192",
-            "messages": reflection_prompt
-        }
-        reflection_response = requests.post(url, headers=headers, json=reflection_data)
-        reflection_result = reflection_response.json()
-        corrected_reply = reflection_result["choices"][0]["message"]["content"]
-        final_reply = corrected_reply if corrected_reply.strip() != reply.strip() else reply
-
         # 💬 Save and return final reply
         conversation_histories[session_id].append({
             "role": "assistant",
-            "content": final_reply
+            "content": reply
         })
 
-        return {"response": final_reply}
+        return {"reply": reply}
 
     except Exception as e:
         return {"error": str(e)}

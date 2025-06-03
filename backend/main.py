@@ -25,4 +25,3 @@ app.include_router(export.router)
 @app.get("/")
 def home():
     return {"message": "SynthesisTalk backend is running!"}
-

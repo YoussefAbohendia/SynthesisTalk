@@ -44,6 +44,7 @@ const SynthesisTalkChat = () => {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  
 
   // Initialize with a default chat
   useEffect(() => {
@@ -372,18 +373,70 @@ const SynthesisTalkChat = () => {
   };
 
   const formatMessageContent = (content) => {
-    return content.split('\n').map((line, idx) => (
-      <div key={idx} className={line.startsWith('•') || line.startsWith('-') ? 'ml-4' : ''}>
-        {line.includes('**') ? (
-          <span dangerouslySetInnerHTML={{
-            __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          }} />
-        ) : (
-          line
-        )}
-      </div>
-    ));
-  };
+  // If it looks like an anchor tag, render it as HTML
+  if (content.includes('<a ') && content.includes('</a>')) {
+    return (
+      <span
+        dangerouslySetInnerHTML={{ __html: content }}
+      />
+    );
+  }
+
+  // Otherwise, render as before (bold, list, etc)
+  return content.split('\n').map((line, idx) => (
+    <div key={idx} className={line.startsWith('•') || line.startsWith('-') ? 'ml-4' : ''}>
+      {line.includes('**') ? (
+        <span dangerouslySetInnerHTML={{
+          __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        }} />
+      ) : (
+        line
+      )}
+    </div>
+  ));
+};
+
+
+  // All your handler and helper functions above here
+
+// ⬇⬇⬇ PASTE HERE! (add this just above 'return (')
+const handleExport = async (type) => {
+  const formatCommand = type === "pdf" ? "save as pdf" : "save as txt";
+  const sessionId = currentChatId?.toString();
+  try {
+    const response = await fetch('http://127.0.0.1:8000/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: formatCommand,
+        session_id: sessionId,
+      }),
+    });
+
+    if (!response.ok) throw new Error("Failed to download");
+
+    // Download the file
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = type === "pdf" ? "chat_export.pdf" : "chat_export.txt";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    }, 1000);
+  } catch (err) {
+    alert("Failed to export chat!");
+    console.error(err);
+  }
+};
+
+
+
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -512,6 +565,19 @@ const SynthesisTalkChat = () => {
             <button className="p-2 hover:bg-gray-100 rounded-xl transition-colors duration-200 group">
               <Maximize2 className="w-5 h-5 text-gray-600 group-hover:text-gray-800" />
             </button>
+            <button
+  onClick={() => handleExport('txt')}
+  className="p-2 rounded-xl bg-gradient-to-br from-green-400 to-blue-500 text-white ml-2"
+>
+  <FileText className="w-5 h-5" /> Export TXT
+</button>
+<button
+  onClick={() => handleExport('pdf')}
+  className="p-2 rounded-xl bg-gradient-to-br from-red-400 to-pink-500 text-white ml-2"
+>
+  <FileText className="w-5 h-5" /> Export PDF
+</button>
+
           </div>
         </header>
 
