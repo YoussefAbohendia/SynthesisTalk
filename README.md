@@ -18,7 +18,7 @@ SynthesisTalk is an AI-powered research assistant that helps you analyze documen
 ## Requirements
 
 - Python 3.8+
-- Node.js 16+ and npm/yarn
+- Node.js 16+ and npm
 - (Recommended) [Poetry](https://python-poetry.org/) or `pip` for Python package management
 
 ---
@@ -28,26 +28,26 @@ SynthesisTalk is an AI-powered research assistant that helps you analyze documen
 1. **Clone the repository**
 
    ```sh
-   git clone <your-repo-url>
-   cd <project-folder>
+   git clone https://github.com/YoussefAbohendia/SynthesisTalk.git
+   cd <SynthesisTalk>
 
     Create and activate a virtual environment
 
 python -m venv venv
 source venv/bin/activate   # On Windows: venv\Scripts\activate
 
+cd backend
+
 Install backend dependencies
 
 pip install -r requirements.txt
-
-# or if using poetry:
-# poetry install
 
 Set up environment variables
 
     Create a .env file in the backend directory with your API keys (for LLMs, etc):
 
     GROQ_API_KEY=your_groq_api_key_here
+    SERPAPI_KEY=your_serp_api_key_here
 
 Run the FastAPI server
 
