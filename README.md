@@ -65,14 +65,15 @@ cd frontend   # or wherever your React app is located
 Install frontend dependencies
 
 npm install
-# or
-yarn install
+
+npm install -D tailwindcss postcss autoprefixer
+
+npx tailwindcss init -p
 
 Start the React development server
 
-npm start
-# or
-yarn start
+npm run dev
+
 
     The app will be available at http://localhost:3000 by default.
 
